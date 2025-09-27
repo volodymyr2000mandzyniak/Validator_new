@@ -1,0 +1,329 @@
+<div class="container-fluid mt-4 px-5 page-narrow">
+  <!-- Хлібні крихти -->
+  <nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><%= link_to 'Головна', root_path %></li>
+      <li class="breadcrumb-item active">Завантаження файлу</li>
+    </ol>
+  </nav>
+
+  <div class="row justify-content-center">
+    <div class="col-12">
+      <% if notice %>
+        <div class="alert alert-success alert-dismissible fade show mb-4" role="alert">
+          <i class="bi bi-check-circle-fill me-2"></i><%= notice %>
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      <% end %>
+
+      <% if alert %>
+        <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i><%= alert %>
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      <% end %>
+
+      <div class="card mb-4">
+        <div class="card-header bg-light">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h1 class="h3 mb-0">Завантаження файлу</h1>
+              <p class="text-muted mb-0">Оберіть файл з email-адресами для подальшої обробки</p>
+            </div>
+            <div class="text-muted small">Статус: <span id="headerStatus">Очікування файлу</span></div>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <%= form_with(model: @uploaded_file, url: file_uploads_path, local: true,
+                        html: { id: 'uploadForm', class: 'd-none' }) do |form| %>
+            <%= form.file_field :original_file, id: 'hiddenFileInput' %>
+            <%= hidden_field_tag :authenticity_token, form_authenticity_token %>
+          <% end %>
+
+          <!-- Drop Zone -->
+          <div class="drop-zone mb-4 p-5 border-2 border-dashed border-gray-300 rounded-3 text-center"
+               id="dropZone" role="button" tabindex="0"
+               aria-label="Перетягніть файл або натисніть, щоб обрати">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"
+                 fill="currentColor" class="text-muted mb-3" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+              <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+            </svg>
+            <p class="text-muted" id="dzText">Перетягніть файл сюди або</p>
+            <label for="fileInput" class="btn btn-primary">
+              <i class="bi bi-upload me-2"></i>Обрати файл
+            </label>
+            <input type="file" id="fileInput" class="d-none" accept=".txt,.csv,.json">
+          </div>
+
+          <!-- ДВОКОЛОНОЧНИЙ РЕЖИМ ПІСЛЯ ЗАВАНТАЖЕННЯ -->
+          <div id="twoPane" class="<%= (@uploaded_file.persisted? && @uploaded_file.original_file.attached?) ? '' : 'd-none' %>">
+            <div class="row g-4">
+              <!-- ЛІВА КОЛОНКА: інформація -->
+              <div class="col-12 col-lg-5">
+                <div class="card h-100">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Інформація про файл</h6>
+                    <span class="badge bg-success" id="fileStatusBadge">Завантажено</span>
+                  </div>
+                  <div class="card-body">
+                    <div id="fileDetails">
+                      <% if @uploaded_file.persisted? && @uploaded_file.original_file.attached? %>
+                        <div class="mb-2"><strong>Назва:</strong> <%= @uploaded_file.original_file.filename %></div>
+                        <div class="mb-2"><strong>Тип:</strong> <%= @uploaded_file.original_file.content_type %></div>
+                        <div class="mb-2"><strong>Розмір:</strong> <%= number_to_human_size(@uploaded_file.original_file.byte_size) %></div>
+                        <div class="mb-2"><strong>Завантажено:</strong> <%= time_ago_in_words(@uploaded_file.created_at) %> тому</div>
+                        <div class="mb-2"><strong>Рядків:</strong> <span id="lineCountInfo">Обчислюється...</span></div>
+                      <% else %>
+                        <div class="text-muted">Інформація про файл з'явиться тут після завантаження</div>
+                      <% end %>
+                    </div>
+
+                    <div class="mt-4">
+                      <% if @uploaded_file.persisted? %>
+                        <div class="d-grid gap-2">
+                          <%= link_to validation_path(file_id: @uploaded_file.id), class: 'btn btn-primary', id: 'validationBtn' do %>
+                            <i class="bi bi-check-circle me-2"></i>Перейти до перевірки
+                          <% end %>
+                          <button class="btn btn-outline-danger" onclick="resetFile()">
+                            <i class="bi bi-trash me-2"></i>Видалити файл
+                          </button>
+                        </div>
+                      <% else %>
+                        <div class="text-center">
+                          <div class="spinner-border text-primary mb-3" role="status" id="loadingSpinner" style="display:none;">
+                            <span class="visually-hidden">Завантаження...</span>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ПРАВА КОЛОНКА: прев'ю (зменшена ширина) -->
+              <div class="col-12 col-lg-7">
+                <div class="card h-100">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="fw-semibold"><i class="bi bi-eye me-2"></i>Попередній перегляд</span>
+                    <small class="text-muted" id="previewInfo"></small>
+                  </div>
+
+                  <div class="card-body p-0">
+                    <div id="previewContainer" class="preview-container">
+                      <div class="preview-grid">
+                        <pre id="lineNumbers" class="line-numbers"></pre>
+                        <pre id="previewContent" class="preview-content"></pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>
+        <strong>Підтримка великих файлів</strong><br>
+        До 500MB, прев’ю без підвисань (відмальовування рядків батчами).
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .page-narrow {
+    margin-left: 200px;
+    margin-right: 200px;
+    max-width: calc(100% - 400px);
+    box-sizing: border-box;
+  }
+  @media (max-width: 1400px) {
+    .page-narrow { margin-left: 24px; margin-right: 24px; max-width: none; }
+  }
+
+  .drop-zone{transition:.3s ease;background:#fafafa;cursor:pointer}
+  .drop-zone:hover{background:#f0f8ff;border-color:#0d6efd!important}
+  .drop-zone.drag-over{background:#e3f2fd!important;border-color:#0d6efd!important;transform:scale(1.02)}
+  .drop-zone.compact{padding:1.5rem!important;border-style:solid!important}
+  .drop-zone.compact svg{width:24px;height:24px;margin-bottom:.5rem!important}
+
+  .preview-container{
+    max-height: 60vh;
+    min-height: 400px;
+    overflow: auto;
+    border: 1px solid #dee2e6;
+    border-radius: .375rem;
+    background: #fff;
+    resize: vertical;
+  }
+  .preview-grid{
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: flex-start;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .line-numbers, .preview-content{
+    margin: 0;
+    padding: 12px;
+    overflow: visible;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    background: #fff;
+    box-sizing: border-box;
+  }
+
+  .line-numbers{
+    background:#f8f9fa; 
+    color:#6c757d;
+    min-width: 60px;
+    border-right: 1px solid #dee2e6;
+    user-select: none;
+    text-align: right;
+    padding-right: 8px;
+  }
+
+  .fade-in{animation:fadeIn .4s ease-in}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+</style>
+
+<script>
+// JavaScript код залишається незмінним
+document.addEventListener('DOMContentLoaded', () => {
+  const dropZone = document.getElementById('dropZone');
+  const twoPane = document.getElementById('twoPane');
+  const fileInput = document.getElementById('fileInput');
+  const hiddenFileInput = document.getElementById('hiddenFileInput');
+  const uploadForm = document.getElementById('uploadForm');
+  const headerStatus = document.getElementById('headerStatus');
+  const previewContent = document.getElementById('previewContent');
+  const lineNumbers = document.getElementById('lineNumbers');
+
+  <% if @uploaded_file.persisted? && @uploaded_file.original_file.attached? %>
+    enterTwoPane();
+    loadPreviewFromUrl('<%= rails_blob_path(@uploaded_file.original_file, disposition: "inline") %>');
+  <% end %>
+
+  ['dragenter','dragover','dragleave','drop'].forEach(e => dropZone.addEventListener(e, prevent, false));
+  ['dragenter','dragover'].forEach(e => dropZone.addEventListener(e, () => dropZone.classList.add('drag-over')));
+  ;['dragleave','drop'].forEach(e => dropZone.addEventListener(e, () => dropZone.classList.remove('drag-over')));
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+  dropZone.addEventListener('drop', (e) => handleFiles(e.dataTransfer.files));
+  fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+  function prevent(e){ e.preventDefault(); e.stopPropagation(); }
+  function updateHeaderStatus(t){ headerStatus && (headerStatus.textContent = t); }
+
+  function enterTwoPane(){
+    dropZone.classList.add('d-none');
+    twoPane.classList.remove('d-none');
+    twoPane.classList.add('fade-in');
+    updateHeaderStatus('Завантажено');
+  }
+
+  function handleFiles(files){
+    if(!files || !files.length) return;
+    const file = files[0];
+
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if(!['txt','csv','json'].includes(ext)) return alert('Підтримуються лише TXT/CSV/JSON');
+    if(file.size > 500*1024*1024) return alert('Файл занадто великий (макс 500MB)');
+
+    enterTwoPane();
+    renderPreviewFromFile(file);
+    autoUpload(file);
+  }
+
+  function renderPreviewFromFile(file){
+    const r = new FileReader();
+    r.onload = (e) => renderPreview(e.target.result);
+    r.onerror = () => showReadError();
+    r.readAsText(file);
+  }
+
+  function loadPreviewFromUrl(url){
+    fetch(url).then(r => r.text()).then(renderPreview).catch(() => showReadError());
+  }
+
+  function showReadError(){
+    previewContent.textContent = 'Не вдалося завантажити вміст файлу';
+    document.getElementById('previewInfo').textContent = 'Помилка';
+  }
+
+  function renderPreview(content){
+    const lines = content.split('\n');
+    const total = lines.length;
+    document.getElementById('lineCountInfo')?.replaceChildren(document.createTextNode(total.toLocaleString()));
+
+    let previewText;
+    if(content.length > 1_000_000){
+      previewText = lines.slice(0, 1000).join('\n') + 
+        `\n\n--- ПРЕВ'Ю ОБМЕЖЕНО ---\nПоказано перші 1000 рядків з ${total.toLocaleString()}`;
+      document.getElementById('previewInfo').textContent = `Показано 1000/${total.toLocaleString()} рядків`;
+      batchRenderLineNumbers(1000);
+    }else{
+      previewText = content;
+      document.getElementById('previewInfo').textContent = `${total.toLocaleString()} рядків`;
+      batchRenderLineNumbers(total);
+    }
+    previewContent.textContent = previewText;
+  }
+
+  function batchRenderLineNumbers(count){
+    lineNumbers.textContent = '';
+    const chunk = 5000;
+    let start = 1;
+
+    function step(){
+      const end = Math.min(start + chunk - 1, count);
+      let buf = '';
+      for(let i=start;i<=end;i++) buf += i + '\n';
+      lineNumbers.append(document.createTextNode(buf));
+      if(end < count){
+        start = end + 1;
+        requestAnimationFrame(step);
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  function autoUpload(file){
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    hiddenFileInput.files = dt.files;
+
+    const formData = new FormData(uploadForm);
+    fetch(uploadForm.action, {
+      method: 'POST',
+      body: formData,
+      headers: { 'X-CSRF-Token': document.querySelector('[name="csrf-token"]').content, 'Accept': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+      if(data.success){
+        window.location.href = '<%= new_file_upload_path %>?file_id=' + data.file_id;
+
+      }else{
+        throw new Error((data.errors || ['Невідома помилка']).join(', '));
+      }
+    })
+    .catch(err => {
+      alert('Помилка завантаження: ' + err.message);
+      resetFile();
+    });
+  }
+
+  window.resetFile = function(){
+    window.location.href = '<%= new_file_upload_path %>';
+  };
+});
+</script>
