@@ -1,0 +1,35 @@
+default: &default
+  # Мін/макс довжини (RFC: local ≤ 64, email ≤ 254)
+  min_local_len: 5
+  max_local_len: 64
+  max_email_len: 254
+
+  # Повтори одного символу підряд: 4+ → невалідно (aaaa, 1111)
+  max_consecutive_same: 4
+
+  # Повторювані підрядки (abcabc, romromrom)
+  min_repeat_total_len: 6   # перевіряти тільки якщо локаль ≥ 6
+  min_repeat_unit_len: 2    # мінімальна довжина юніту, що повторюється
+
+  # Послідовності (abc, 123, qwerty, asdf…)
+  min_seq_len_letters: 3    # abc, cde, zyx…
+  min_seq_len_digits: 3     # 123, 456, 987…
+  sequence_words:
+    - qwerty
+    - asdf
+    - zxc
+    - qwertyuiop
+    - password
+    - admin
+    - abc
+    - 123
+    - 12345
+
+development:
+  <<: *default
+
+test:
+  <<: *default
+
+production:
+  <<: *default

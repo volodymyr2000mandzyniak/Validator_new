@@ -1,30 +1,32 @@
-# app/controllers/validation_controller.rb
 class ValidationController < ApplicationController
   before_action :set_uploaded_file
 
-    def show
-    scope       = params[:scope].presence || 'valid'
-    @total_in   = line_count_blob(@uploaded_file.original_file&.blob)
+  def show
+    scope = params[:scope].presence || 'valid'
 
-    # якщо є фінальний файл — він і є "валідні"
+    # Вхідні рядки (до будь-яких фільтрів)
+    @total_in = line_count_blob(@uploaded_file.original_file&.blob)
+
+    # Валідні (після всіх обраних фільтрів)
     if @uploaded_file.processed_file.attached?
-      @processed    = true
-      @valid_count  = line_count_blob(@uploaded_file.processed_file.blob)
+      @processed   = true
+      @valid_count = line_count_blob(@uploaded_file.processed_file.blob)
     else
-      @processed    = false
-      @valid_count  = 0
+      @processed   = false
+      @valid_count = 0
     end
 
-    @dup_count        = @uploaded_file.report_duplicates.attached?   ? line_count_blob(@uploaded_file.report_duplicates.blob)   : 0
-    @dns_local_count  = @uploaded_file.report_dns_local.attached?    ? line_count_blob(@uploaded_file.report_dns_local.blob)    : 0
-    @dns_online_count = @uploaded_file.report_dns_online.attached?   ? line_count_blob(@uploaded_file.report_dns_online.blob)   : 0
-    @role_count       = @uploaded_file.report_role_based.attached?   ? line_count_blob(@uploaded_file.report_role_based.blob)   : 0
+    # Звіти по категоріях (рахуємо рядки у кожному артефакті)
+    @dup_count        = attached_count(@uploaded_file.report_duplicates)
+    @dns_local_count  = attached_count(@uploaded_file.report_dns_local)
+    @dns_online_count = attached_count(@uploaded_file.report_dns_online)
+    @role_count       = attached_count(@uploaded_file.report_role_based)
+    @syntax_count     = attached_count(@uploaded_file.report_syntax)
 
-    @dns_count     = @dns_local_count + @dns_online_count
+    @dns_count        = @dns_local_count + @dns_online_count
+    @invalid_count    = @dup_count + @dns_count + @role_count + @syntax_count
 
-    # Найнадійніший спосіб невалідних — як різниця (уникає дублювання між звітами)
-    @invalid_count = [@total_in - @valid_count, 0].max
-
+    # Дані прев’ю відповідно до обраного scope
     case scope
     when 'valid'
       blob = (@uploaded_file.processed_file.attached? ? @uploaded_file.processed_file.blob : @uploaded_file.original_file.blob)
@@ -42,8 +44,14 @@ class ValidationController < ApplicationController
       blobs << @uploaded_file.report_dns_local.blob  if @uploaded_file.report_dns_local.attached?
       blobs << @uploaded_file.report_dns_online.blob if @uploaded_file.report_dns_online.attached?
       @preview_lines, distinct_total = union_preview(blobs, limit: 100)
-      # для відображення лічильника в лівій панелі залишаємо суму лок+онлайн
-      @preview_total = @dns_count
+      @preview_total = distinct_total
+
+    when 'syntax'
+      if @uploaded_file.report_syntax.attached?
+        @preview_lines, @preview_total = read_blob_lines(@uploaded_file.report_syntax.blob, limit: 100)
+      else
+        @preview_lines, @preview_total = [], 0
+      end
 
     when 'role'
       if @uploaded_file.report_role_based.attached?
@@ -53,17 +61,17 @@ class ValidationController < ApplicationController
       end
 
     when 'invalid'
-      # Усі невалідні: об’єднуємо звіти (distinct), щоб не дублювати однакові адреси
       blobs = []
-      blobs << @uploaded_file.report_duplicates.blob  if @uploaded_file.report_duplicates.attached?
-      blobs << @uploaded_file.report_dns_local.blob   if @uploaded_file.report_dns_local.attached?
-      blobs << @uploaded_file.report_dns_online.blob  if @uploaded_file.report_dns_online.attached?
-      blobs << @uploaded_file.report_role_based.blob  if @uploaded_file.report_role_based.attached?
+      blobs << @uploaded_file.report_duplicates.blob    if @uploaded_file.report_duplicates.attached?
+      blobs << @uploaded_file.report_dns_local.blob     if @uploaded_file.report_dns_local.attached?
+      blobs << @uploaded_file.report_dns_online.blob    if @uploaded_file.report_dns_online.attached?
+      blobs << @uploaded_file.report_role_based.blob    if @uploaded_file.report_role_based.attached?
+      blobs << @uploaded_file.report_syntax.blob        if @uploaded_file.report_syntax.attached?
       @preview_lines, distinct_total = union_preview(blobs, limit: 100)
-      # лівий лічильник уже показує @invalid_count як total - valid; лишаємо його для консистентності
-      @preview_total = @invalid_count
+      @preview_total = distinct_total
 
     else
+      # дефолт — valid
       blob = (@uploaded_file.processed_file.attached? ? @uploaded_file.processed_file.blob : @uploaded_file.original_file.blob)
       @preview_lines, @preview_total = read_blob_lines(blob, limit: 100)
     end
@@ -76,6 +84,7 @@ class ValidationController < ApplicationController
   def process_file
     opts = {
       remove_duplicates: ActiveModel::Type::Boolean.new.cast(params[:remove_duplicates]),
+      syntax:            ActiveModel::Type::Boolean.new.cast(params[:syntax]),
       dns_local:         ActiveModel::Type::Boolean.new.cast(params[:dns_local]),
       dns_online:        ActiveModel::Type::Boolean.new.cast(params[:dns_online]),
       role_based:        ActiveModel::Type::Boolean.new.cast(params[:role_based])
@@ -83,17 +92,17 @@ class ValidationController < ApplicationController
 
     if opts.values.none?
       redirect_to validation_path(file_id: @uploaded_file.id),
-                  alert: "Оберіть хоча б один фільтр (Дедуплікація / DNS / DNS online / Службові адреси)"
+                  alert: "Оберіть хоча б один фільтр (Синтаксис / Дедуплікація / DNS / DNS online / Службові)"
       return
     end
 
     result = Validation::Pipeline.new(@uploaded_file, opts).call
 
-    # необов’язково, але хай залишиться для підказок
-    flash[:duplicates_removed] = result[:removed_duplicates] if result.key?(:removed_duplicates)
-    flash[:dns_local_removed]  = result[:removed_dns_local]  if result.key?(:removed_dns_local)
-    flash[:dns_online_removed] = result[:removed_dns_online] if result.key?(:removed_dns_online)
-    flash[:role_removed]       = result[:removed_role]       if result.key?(:removed_role)
+    flash[:removed_duplicates] = result[:removed_duplicates] if result.key?(:removed_duplicates)
+    flash[:removed_dns_local]  = result[:removed_dns_local]  if result.key?(:removed_dns_local)
+    flash[:removed_dns_online] = result[:removed_dns_online] if result.key?(:removed_dns_online)
+    flash[:removed_role]       = result[:removed_role]       if result.key?(:removed_role)
+    flash[:removed_syntax]     = result[:removed_syntax]     if result.key?(:removed_syntax)
 
     redirect_to validation_path(file_id: @uploaded_file.id)
   end
@@ -111,6 +120,10 @@ class ValidationController < ApplicationController
 
   def set_uploaded_file
     @uploaded_file = UploadedFile.find(params[:file_id])
+  end
+
+  def attached_count(attachment)
+    attachment&.attached? ? line_count_blob(attachment.blob) : 0
   end
 
   # Рахує кількість рядків у blob (стрімінг)
