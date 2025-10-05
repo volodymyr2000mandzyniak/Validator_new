@@ -459,6 +459,15 @@ default: &default
     - gmail.com
     - googlemail.com
 
+  patterns:
+    - '\bnore?ply\b'
+    - '\b(no|do)\.?not\.?reply\b'
+    - '\b(info|support|admin|sales|help|office)\b'
+    - '\b(marketing|newsletter|newsletters?)\b'
+    - '\b(postmaster|webmaster|hostmaster|abuse|security)\b'
+    - '^\d{2,}.*\b(info|support|admin|sales|shop|office)\b'   # <— ДОДАНО
+  
+
 development:
   <<: *default
 test:
